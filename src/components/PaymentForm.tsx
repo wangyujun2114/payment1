@@ -64,6 +64,28 @@ interface PaymentFormProps {
   onPayeeSelect?: (payee: PayeeInfo) => void;
 }
 
+// --- CRITICAL FIX: Define TopInput OUTSIDE the component ---
+// This prevents the component from being re-created on every render, 
+// which causes the input to lose focus.
+interface TopInputProps {
+  width: string;
+  value: string;
+  fieldName: keyof PaymentFormData;
+  onChange: (key: keyof PaymentFormData, value: string) => void;
+}
+
+const TopInput: React.FC<TopInputProps> = ({ width, value, fieldName, onChange }) => (
+  <div style={{ width }} className="flex flex-col justify-end border-b border-gray-400 h-12 px-1">
+    <input 
+      type="text" 
+      className="w-full bg-transparent outline-none text-center text-blue-700 print:text-black pb-1 text-xl leading-normal font-medium"
+      value={value}
+      onChange={(e) => onChange(fieldName, e.target.value)}
+    />
+  </div>
+);
+// -----------------------------------------------------------
+
 const PaymentForm: React.FC<PaymentFormProps> = ({ data, onChange, payeeOptions = [], onPayeeSelect }) => {
   // State for Dropdown
   const [showDropdown, setShowDropdown] = useState(false);
@@ -134,19 +156,6 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ data, onChange, payeeOptions 
   // Label Cell Style - Unified for perfect centering
   const labelCellStyle = "w-24 flex items-center justify-center border-r border-black font-medium text-lg p-1 flex-shrink-0 text-black";
 
-  // Helper Component for Top Row Inputs
-  // Reduced height from h-14 to h-12 to save vertical space
-  const TopInput = ({ width, value, fieldName }: { width: string, value: string, fieldName: keyof PaymentFormData }) => (
-    <div style={{ width }} className="flex flex-col justify-end border-b border-gray-400 h-12 px-1">
-      <input 
-        type="text" 
-        className="w-full bg-transparent outline-none text-center text-blue-700 print:text-black pb-1 text-xl leading-normal font-medium"
-        value={value}
-        onChange={(e) => onChange(fieldName, e.target.value)}
-      />
-    </div>
-  );
-
   return (
     <div style={containerStyle} className="relative bg-white text-black text-sm">
       {/* Sidebar Text */}
@@ -171,21 +180,22 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ data, onChange, payeeOptions 
         <div className="flex justify-between items-end mb-1 px-1 whitespace-nowrap">
           <div className="flex items-end gap-1">
             <span className="text-lg font-medium flex-shrink-0 mb-2">申请部门：</span>
-            <TopInput width="10rem" value={data.dept} fieldName="dept" />
+            {/* Using External TopInput to fix focus loss */}
+            <TopInput width="10rem" value={data.dept} fieldName="dept" onChange={onChange} />
           </div>
           
           <div className="flex items-end gap-1 mx-2">
-            <TopInput width="4rem" value={data.year} fieldName="year" />
+            <TopInput width="4rem" value={data.year} fieldName="year" onChange={onChange} />
             <span className="text-lg mb-2">年</span>
-            <TopInput width="3rem" value={data.month} fieldName="month" />
+            <TopInput width="3rem" value={data.month} fieldName="month" onChange={onChange} />
             <span className="text-lg mb-2">月</span>
-            <TopInput width="3rem" value={data.day} fieldName="day" />
+            <TopInput width="3rem" value={data.day} fieldName="day" onChange={onChange} />
             <span className="text-lg mb-2">日</span>
           </div>
 
           <div className="flex items-end gap-1">
             <span className="text-lg font-medium flex-shrink-0 mb-2">编号：</span>
-            <TopInput width="6rem" value={data.serial} fieldName="serial" />
+            <TopInput width="6rem" value={data.serial} fieldName="serial" onChange={onChange} />
           </div>
         </div>
 
@@ -217,7 +227,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ data, onChange, payeeOptions 
                     <button
                         onClick={(e) => {
                             e.stopPropagation(); // Prevent closing dropdown if open
-                            onChange('payee', ''); // Clear payee, triggers parent cleanup of bank info
+                            onChange('payee', ''); // Clear payee field
                             setShowDropdown(false);
                         }}
                         className="absolute right-2 text-gray-300 hover:text-red-500 no-print transition-colors p-1"

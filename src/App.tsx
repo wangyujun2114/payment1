@@ -36,7 +36,10 @@ const digitUppercase = (n: string | number): string => {
 const App: React.FC = () => {
   // Helper to get defaults
   const getDefaults = (): PaymentFormData => {
-    // Dates should be empty by default, populated only when Payee is entered
+    // Requirements: 
+    // - Dept default: '精机主轴'
+    // - Operator default: '王宇俊'
+    // - Date: Empty initially, fills when Payee is entered
     return {
       ...initialFormData,
       dept: '精机主轴',
@@ -50,7 +53,7 @@ const App: React.FC = () => {
   // State now holds an array of TWO forms
   const [formsData, setFormsData] = useState<[PaymentFormData, PaymentFormData]>([getDefaults(), getDefaults()]);
   const [payeeDb, setPayeeDb] = useState<PayeeInfo[]>([]);
-  const [saveStatus, setSaveStatus] = useState<string>('已就绪');
+  const [saveStatus, setSaveStatus] = useState<string>('已就绪 (2分钟自动保存)');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -74,18 +77,30 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Auto-Save Effect
+  // --- STRICT INTERVAL SAVING LOGIC ---
+  // Use a ref to access the latest state inside setInterval without adding it as a dependency
+  const formsDataRef = useRef(formsData);
   useEffect(() => {
-    setSaveStatus('保存中...');
-    const timer = setTimeout(() => {
-      localStorage.setItem('paymentFormsData', JSON.stringify(formsData));
-      setSaveStatus('☁️ 已自动保存');
-    }, 800);
-
-    return () => clearTimeout(timer);
+    formsDataRef.current = formsData;
   }, [formsData]);
 
-  // Logic to auto-save new payee info
+  // Set up the interval ONCE on mount
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSaveStatus('保存中...');
+      localStorage.setItem('paymentFormsData', JSON.stringify(formsDataRef.current));
+      
+      // Update status to saved after a short delay
+      setTimeout(() => {
+        setSaveStatus('☁️ 已自动保存');
+      }, 800);
+    }, 2 * 60 * 1000); // 2 minutes
+
+    return () => clearInterval(timer);
+  }, []);
+  // ------------------------------------
+
+  // Logic to auto-save new payee info (only triggers during image generation)
   const checkAndSavePayee = (formData: PaymentFormData) => {
     const { payee, bankAccount, bankName } = formData;
     
@@ -137,7 +152,6 @@ const App: React.FC = () => {
     });
 
     // BACKUP & HIDE NO-PRINT ELEMENTS (like the X button)
-    // We strictly hide anything marked as 'no-print' before capturing
     const noPrintNodes = printRef.current.querySelectorAll('.no-print');
     const noPrintRestores: { el: HTMLElement, originalDisplay: string }[] = [];
     noPrintNodes.forEach((node) => {
@@ -154,7 +168,7 @@ const App: React.FC = () => {
         backgroundColor: '#ffffff',
       });
 
-      // To make it print-ready for A4, we want to ensure the output image width maps to 210mm.
+      // A4 Layout Logic
       const scale = 3; 
       const a4WidthPx = Math.floor(210 * 3.78 * scale);
       const a4HeightPx = Math.floor(297 * 3.78 * scale);
@@ -199,7 +213,7 @@ const App: React.FC = () => {
       document.body.removeChild(link);
       
       setSaveStatus('✅ 图片下载成功');
-      setTimeout(() => setSaveStatus('已就绪'), 3000);
+      setTimeout(() => setSaveStatus('已就绪 (2分钟自动保存)'), 3000);
       
     } catch (error) {
       console.error('Image Generation Error:', error);
@@ -250,6 +264,7 @@ const App: React.FC = () => {
       const currentForm = newForms[index];
       const newData = { ...currentForm, [key]: value };
       
+      // Logic: Amount Numeric -> Chinese
       if (key === 'amountNumeric') {
         const numVal = parseFloat(value);
         if (!isNaN(numVal) && value !== '') {
@@ -259,7 +274,7 @@ const App: React.FC = () => {
         }
       }
 
-      // Logic for Payee interaction
+      // Logic: Payee
       if (key === 'payee') {
           if (value && value.trim() !== '') {
               // Auto-fill date if it's currently empty
@@ -269,17 +284,20 @@ const App: React.FC = () => {
                   newData.month = (now.getMonth() + 1).toString();
                   newData.day = now.getDate().toString();
               }
+              
+              // (Optional) Check local DB and auto-fill Bank info if not set manually yet
+              // This acts as a simple lookup while typing if exact match
+              const match = payeeDb.find(p => p.收款单位 === value);
+              if (match) {
+                 if (!newData.bankAccount) newData.bankAccount = match.银行账号;
+                 if (!newData.bankName) newData.bankName = match.开户行;
+              }
+
           } else {
-              // If Payee is cleared (empty), also clear Bank Info, Date, Amounts, Reason and Attachments
-              newData.bankAccount = '';
-              newData.bankName = '';
-              newData.year = '';
-              newData.month = '';
-              newData.day = '';
-              newData.amountChinese = '';
-              newData.amountNumeric = '';
-              newData.reason = '';
-              newData.attachments = '';
+              // If Payee is cleared (empty), do not clear date/bank automatically to allow manual control,
+              // or strictly clear them. 
+              // User request: "Auto fill... if not found manual input". 
+              // Let's keep existing values to be safe, only clear if explicitly hitting "X" in component.
           }
       }
       
@@ -297,9 +315,11 @@ const App: React.FC = () => {
             payee: payee.收款单位 || '',
             bankAccount: payee.银行账号 || '',
             bankName: payee.开户行 || '',
-            year: now.getFullYear().toString(),
-            month: (now.getMonth() + 1).toString(),
-            day: now.getDate().toString(),
+            // Only update date if it's empty, or just always update it on selection? 
+            // User said: "Auto add date... manually modify". Let's update it on selection for convenience.
+            year: newForms[index].year || now.getFullYear().toString(),
+            month: newForms[index].month || (now.getMonth() + 1).toString(),
+            day: newForms[index].day || now.getDate().toString(),
         };
         return newForms;
     });
@@ -330,7 +350,7 @@ const App: React.FC = () => {
         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 text-sm text-blue-800 flex flex-col gap-2 w-full text-left shadow-sm">
             <p><strong>💡 双联模式：</strong>界面现在显示两张独立的表格。填写后可生成一张包含两份单据的 A4 图片。</p>
             <p><strong>💾 另存为图片：</strong>将当前两张单据保存为一张 A4 大小的图片，方便打印。<b>（提示语不会出现在图片中）</b></p>
-            <p><strong>❌ 一键清除：</strong>点击“收款单位”输入框内的“❌”图标，可快速清除收款人、银行账号、日期、金额及附件信息。</p>
+            <p><strong>❌ 一键清除：</strong>点击“收款单位”输入框内的“❌”图标，可快速清除收款人。</p>
         </div>
 
         <div className="flex flex-wrap gap-4 justify-center">
