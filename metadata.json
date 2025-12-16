@@ -1,0 +1,5 @@
+{
+  "name": "Payment Requisition Form",
+  "description": "An interactive, printable payment requisition form (付款申请单) replicating a specific financial voucher layout.",
+  "requestFramePermissions": []
+}
